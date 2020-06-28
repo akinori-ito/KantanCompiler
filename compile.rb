@@ -43,7 +43,7 @@
             return t  
         elsif @prog[0] =~ /^[a-z]+$/ and
            @prog[1] == "=" then
-           var = @prog.shift
+           var = @prog.shift.upcase
            @prog.shift
            t = ParseTreeNode.new("Statement",[],nil)
            e = parseExpression
@@ -56,7 +56,7 @@
            t.child.push(e)
            return t
         elsif @prog[0] =~ /^[a-z_][a-z0-9_]+:/ then
-            lab = @prog.shift.sub(/:/,"")
+            lab = @prog.shift.sub(/:/,"").upcase
             t = ParseTreeNode.new("Statement",[],nil)
             t.child.push(ParseTreeNode.new("Label",nil,lab))
             return t
@@ -74,7 +74,7 @@
                 v = ParseTreeNode.new("Constant",nil,@prog.shift)
                 stack.push(ParseTreeNode.new("Expression",[v],nil))
             when /^[a-z]+$/
-                v = ParseTreeNode.new("Variable",nil,@prog.shift)
+                v = ParseTreeNode.new("Variable",nil,@prog.shift.upcase)
                 stack.push(ParseTreeNode.new("Expression",[v],nil))
             when "+","-","==","<"
                 op = @prog.shift
@@ -192,10 +192,10 @@ class QuadrupleGenerator
                 lab = n.child[2].content
                 @stream.push Quadruple.new("cjump",t,nil,lab)
             elsif n.child[0].content == "Goto" then
-                lab = n.child[1].content
+                lab = n.child[1].content.upcase
                 @stream.push Quadruple.new("jump",t,nil,lab)
             elsif n.child[0].type == "Label" then
-                @stream.push Quadruple.new("label",nil,nil,n.child[0].content)
+                @stream.push Quadruple.new("label",nil,nil,n.child[0].content.upcase)
             end
         else
             raise "Quadruple generation error: unknown node Statement::"+n.child[0].content
@@ -352,17 +352,17 @@ class CodeGenerator
                 out.push(["","ST GR0,#{dest}"])
             when "+"
                 out.push(["",register_load("GR0",e1)])
-                out.push(["","ADDA GR0, #{e2}"])
+                out.push(["","ADDA GR0,#{e2}"])
                 out.push(["","ST GR0,#{dest}"])
             when "-"
                 out.push(["",register_load("GR0",e1)])
-                out.push(["","SUBA GR0, #{e2}"])
+                out.push(["","SUBA GR0,#{e2}"])
                 out.push(["","ST GR0,#{dest}"])
             when "=="
                 lab = newlabel
                 out.push(["","LAD GR1,1"])
                 out.push(["",register_load("GR0",e1)])
-                out.push(["","CPA GR0, #{e2}"])
+                out.push(["","CPA GR0,#{e2}"])
                 out.push(["","JZE #{lab}"])
                 out.push(["","LAD GR1,0"])
                 out.push([lab,"ST GR1,#{dest}"])
@@ -370,17 +370,17 @@ class CodeGenerator
                 lab = newlabel
                 out.push(["","LAD GR1,1"])
                 out.push(["",register_load("GR0",e1)])
-                out.push(["","CPA GR0, #{e2}"])
+                out.push(["","CPA GR0,#{e2}"])
                 out.push(["","JMI #{lab}"])
                 out.push(["","LAD GR1,0"])
                 out.push([lab,"ST GR1,#{dest}"])
             when "label"
                 out.push([dest,"NOP"])
             when "jump"
-                out.push(["","JUMP #{dest}"])
+                out.push(["","JUMP #{dest.upcase}"])
             when "cjump"
                 out.push(["",register_load("GR0",e1)])
-                out.push(["","JNZ #{dest}"])
+                out.push(["","JNZ #{dest.upcase}"])
             else
                 raise "Bad operation: #{op}"
             end
