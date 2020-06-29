@@ -41,7 +41,7 @@
             end
             @prog.shift
             return t  
-        elsif @prog[0] =~ /^[a-z]+$/ and
+        elsif @prog[0] =~ /^[a-zA-Z]+$/ and
            @prog[1] == "=" then
            var = @prog.shift.upcase
            @prog.shift
@@ -55,7 +55,7 @@
            t.child.push(ParseTreeNode.new("=",nil,"="))
            t.child.push(e)
            return t
-        elsif @prog[0] =~ /^[a-z_][a-z0-9_]+:/ then
+        elsif @prog[0] =~ /^[a-zA-Z_][a-zA-Z0-9_]+:/ then
             lab = @prog.shift.sub(/:/,"").upcase
             t = ParseTreeNode.new("Statement",[],nil)
             t.child.push(ParseTreeNode.new("Label",nil,lab))
@@ -73,7 +73,7 @@
             when /^[0-9]+$/
                 v = ParseTreeNode.new("Constant",nil,@prog.shift)
                 stack.push(ParseTreeNode.new("Expression",[v],nil))
-            when /^[a-z]+$/
+            when /^[a-zA-Z]+$/
                 v = ParseTreeNode.new("Variable",nil,@prog.shift.upcase)
                 stack.push(ParseTreeNode.new("Expression",[v],nil))
             when "+","-","==","<"
