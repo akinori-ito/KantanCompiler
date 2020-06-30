@@ -1,6 +1,10 @@
-start:	a = 0 ;
-	i = 0 ;
-loop:	a = a + i ;
-	i = i + 1 ;
-	if i < 10 : loop ;
-	goto start ;
+start:	
+	a = &f 1  ;
+	end
+f:	func x :
+	local y z ;
+	y = 1 ;
+	z = 2 ;
+	if x == 0 : ffin ;
+	return x * &f x - 1 ;
+ffin:	return 1 ;

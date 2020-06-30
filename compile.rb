@@ -40,8 +40,41 @@
                 raise "Syntax error: "+@prog[0..3].join(" ")
             end
             @prog.shift
-            return t  
-        elsif @prog[0] =~ /^[a-zA-Z]+$/ and
+            return t
+        elsif @prog[0] == "end" then
+            @prog.shift
+            return ParseTreeNode.new("Statement",[ParseTreeNode.new("End",nil,"End")],nil)   
+        elsif @prog[0] == "return" then
+            t = ParseTreeNode.new("Statement",[],nil)
+            @prog.shift
+            t.child.push(ParseTreeNode.new("Return",nil,"Return"))
+            e = nil
+            if @prog[0] != ";" then
+                e = parseExpression
+            end   
+            unless e.nil? then
+                t.child.push(e)
+            end
+            if @prog[0] != ";" then
+                raise "Syntax error: "+@prog[0..3].join(" ")
+            end
+            @prog.shift
+            return t
+        elsif @prog[0] == "local" then
+            t = ParseTreeNode.new("Statement",[],nil)
+            @prog.shift
+            lt = ParseTreeNode.new("Local",[],nil)
+            t.child.push lt            
+            while @prog[0] =~ /^[a-zA-Z0-9]+$/
+                lt.child.push ParseTreeNode.new("Variable",nil,@prog[0].upcase)
+                @prog.shift
+            end
+            if @prog[0] != ";" then
+                raise "Syntax error: "+@prog[0..3].join(" ")
+            end
+            @prog.shift
+            return t
+        elsif @prog[0] =~ /^[a-zA-Z0-9]+$/ and
            @prog[1] == "=" then
            var = @prog.shift.upcase
            @prog.shift
@@ -55,13 +88,25 @@
            t.child.push(ParseTreeNode.new("=",nil,"="))
            t.child.push(e)
            return t
-        elsif @prog[0] =~ /^[a-zA-Z_][a-zA-Z0-9_]+:/ then
+        elsif @prog[0] =~ /^[a-zA-Z_][a-zA-Z0-9_]*:/ then
             lab = @prog.shift.sub(/:/,"").upcase
             t = ParseTreeNode.new("Statement",[],nil)
+            if @prog[0] == "func" then
+                @prog.shift
+                t.child.push(ParseTreeNode.new("FuncName",nil,lab))
+                while @prog[0] =~ /^[a-zA-Z0-9]+$/
+                    t.child.push(ParseTreeNode.new("Variable",nil,@prog.shift.upcase))
+                end
+                if @prog[0] != ":" then
+                    raise "Syntax error: "+@prog[0..3].join(" ")
+                end
+                @prog.shift
+                return t
+            end  
             t.child.push(ParseTreeNode.new("Label",nil,lab))
             return t
         end
-        raise "Syntax error: "+@prog[0..3].join(" ")
+        raise "Syntax error: token=#{@prog[0]} context="+@prog[0..3].join(" ")
     end
     def parseExpression
         stack = []
@@ -76,7 +121,12 @@
             when /^[a-zA-Z]+$/
                 v = ParseTreeNode.new("Variable",nil,@prog.shift.upcase)
                 stack.push(ParseTreeNode.new("Expression",[v],nil))
-            when "+","-","==","<"
+            when /^&[a-zA-Z]+$/
+                fname = ParseTreeNode.new("FuncName",nil,@prog.shift[1..-1].upcase)
+                e = parseExpression
+                v = ParseTreeNode.new("Function",[fname,e],nil)
+                stack.push(ParseTreeNode.new("Expression",[v],nil))
+            when "+","-","*","/","%","==","<"
                 op = @prog.shift
                 e2 = parseExpression
                 e1 = stack.pop
@@ -162,11 +212,38 @@ class Quadruple
     end
 end
 
+class LocalVariableList
+    attr :var
+    attr :varnum
+    def initialize
+        @var = {"_retval" => 0}
+        @varnum = 1
+        @frame = 0
+    end
+    def var(name)
+        if @var[name] then
+            @frame-@var[name]
+        else
+            nil
+        end
+    end
+    def register(name)
+        @var[name] = @varnum
+        @varnum += 1
+    end
+    def addframe(n)
+        @frame += n
+    end
+    def frame
+        @frame
+    end
+end        
 
 class QuadrupleGenerator
     @@seq = 0
     def initialize(stream)
         @stream = stream
+        @localvars = LocalVariableList.new
     end
     def tmpname
         @@seq += 1
@@ -182,6 +259,8 @@ class QuadrupleGenerator
             if n.child.size > 2 and n.child[1].content == "=" then
                 # child is "var = exp ;"
                 var = n.child[0].content
+                lvar = @localvars.var(var)
+                var = "@#{lvar}" unless lvar.nil?
                 exp = n.child[2]
                 t = tmpname
                 expression(exp,t)
@@ -196,22 +275,65 @@ class QuadrupleGenerator
                 @stream.push Quadruple.new("jump",t,nil,lab)
             elsif n.child[0].type == "Label" then
                 @stream.push Quadruple.new("label",nil,nil,n.child[0].content.upcase)
+            elsif n.child[0].type == "End" then
+                @stream.push Quadruple.new("end",nil,nil,n.child[0].content.upcase)
+            elsif n.child[0].type == "FuncName" then
+                @stream.push Quadruple.new("function",nil,nil,n.child[0].content.upcase)
+                @localvars = LocalVariableList.new
+                @localvars.register(n.child[1].content)
+                @localvars.addframe(1)
+                #@stream.push Quadruple.new("frame",nil,nil,1)
+            elsif n.child[0].type == "Return" then
+                t = tmpname
+                expression(n.child[1],t)
+                @stream.push Quadruple.new("=",t,nil,"@"+@localvars.var("_retval").to_s)
+                nframe = @localvars.frame-1
+                if nframe > 0 then
+                    @stream.push Quadruple.new("frame","-#{nframe}",nil,nil)
+                end
+                @stream.push Quadruple.new("return",nil,nil,nil)
+            elsif n.child[0].type == "Local" then
+                k = 0
+                for vn in n.child[0].child
+                    @localvars.register(vn.content.upcase)
+                    k += 1
+                end
+                @localvars.addframe(k)
+                @stream.push Quadruple.new("frame",k.to_s,nil,nil)
             end
         else
             raise "Quadruple generation error: unknown node Statement::"+n.child[0].content
         end
     end
     def expression(e,tmpvar)
+        operators = {
+            "+" => true,
+            "-" => true,
+            "*" => true,
+            "/" => true,
+            "%" => true,
+            "==" => true,
+            "<" => true
+        }
         if e.child[0].type == "Constant" then
             @stream.push Quadruple.new("=", e.child[0].content,nil,tmpvar)
         elsif e.child[0].type == "Variable" then
-            @stream.push Quadruple.new("=", e.child[0].content, nil, tmpvar)
+            varname = e.child[0].content
+            lvar = @localvars.var(varname)
+            if lvar.nil? then
+                @stream.push Quadruple.new("=", varname, nil, tmpvar)
+            else
+                @stream.push Quadruple.new("=", "@#{lvar}",nil,tmpvar)
+            end
+        elsif e.child[0].type == "Function" then
+            fn = e.child[0]
+            t = tmpname
+            expression(fn.child[1],t)
+            @stream.push Quadruple.new("arg",t,nil,nil)
+            @stream.push Quadruple.new("call",fn.child[0].content,nil,tmpvar)
         elsif e.child[0].type == "(" and e.child[2].type == ")" then
             expression(e.child[1],tmpvar)
-        elsif e.child[1].type == "+" or
-            e.child[1].type == "-" or
-            e.child[1].type == "==" or
-            e.child[1].type == "<" then
+        elsif operators[e.child[1].type] then
             t1 = tmpname
             t2 = tmpname
             expression(e.child[0],t1)
@@ -324,27 +446,40 @@ class CodeGenerator
     def register_load(reg,arg)
         if arg[0] == "=" then
             "LAD "+reg+","+arg[1..-1]
+        elsif arg =~ /^@/ then
+            fr = arg[1..-1]
+            "LD #{reg},#{fr},GR7"
         else
             "LD #{reg},#{arg}"
         end
     end
     def generate
         out = []
+        labelop = {
+            "label" => true,
+            "jump" => true,
+            "cjump" => true,
+            "function" => true,
+            "start" => true,
+            "end" => true,
+        }
+        current_module = ""
         for q in @q
             op,e1,e2,dest = q.q
-            if e1 =~ /^\d+$/ then
+            if e1 =~ /^\-*\d+$/ then
               e1 = "="+e1
-            elsif e1 =~ /[a-zA-Z]/ then
+            elsif e1 =~ /[a-zA-Z]/ and op != "call" then
               @vars[e1] = true
             end 
-            if e2 =~ /^\d+$/ then
+            if e2 =~ /^\-*\d+$/ then
               e2 = "="+e2
             elsif e2 =~ /[a-zA-Z]/ then
               @vars[e2] = true
             end 
-            if dest =~ /[a-zA-Z]/ and 
-                (op != "label" and op != "jump" and op != "cjump") then
+            if dest =~ /[a-zA-Z]/ and !labelop[op] then
               @vars[dest] = true
+            elsif dest =~ /^@/ then
+                dest = dest[1..-1]+",GR7"
             end
             case op
             when "="
@@ -374,19 +509,80 @@ class CodeGenerator
                 out.push(["","JMI #{lab}"])
                 out.push(["","LAD GR1,0"])
                 out.push([lab,"ST GR1,#{dest}"])
+            when "*"
+                out.push(["",register_load("GR1",e1)])
+                out.push(["",register_load("GR2",e2)])
+                out.push(["","CALL FMULT"])
+                out.push(["","ST GR0,#{dest}"])
+            when "/"
+                out.push(["",register_load("GR1",e1)])
+                out.push(["",register_load("GR2",e2)])
+                out.push(["","CALL FDIV"])
+                out.push(["","ST GR0,#{dest}"])
+            when "%"
+                out.push(["",register_load("GR1",e1)])
+                out.push(["",register_load("GR2",e2)])
+                out.push(["","CALL FDIV"])
+                out.push(["","ST GR3,#{dest}"])
             when "label"
                 out.push([dest,"NOP"])
+            when "function"
+                current_module = dest.upcase
+                out.push([current_module,"START"])
             when "jump"
                 out.push(["","JUMP #{dest.upcase}"])
             when "cjump"
                 out.push(["",register_load("GR0",e1)])
                 out.push(["","JNZ #{dest.upcase}"])
+            when "start"
+                current_module = dest.upcase
+                out.push([current_module,"START"])
+                if  current_module == "PROG" then
+                    out.push(["","LAD GR7,256"])
+                    out.push(["","LAD GR7,CSTACK,GR7"])
+                end
+            when "end"
+                finish(out,current_module)
+                @vars = {}
+            when "arg"
+                out.push(["","SUBL GR7,=2"])
+                out.push(["","LD GR0,#{e1}"])
+                out.push(["","ST GR0,0,GR7"])
+            when "call"
+                out.push(["","CALL #{e1}"])
+                out.push(["","LD GR0,1,GR7"])
+                out.push(["","ST GR0,#{dest}"])
+                out.push(["","ADDL GR7,=2"])
+            when "return"
+                out.push(["","RET"])
+            when "frame"
+                nf = e1[1..-1].to_i
+                if nf < 0 then
+                    out.push(["","ADDL GR7,=#{-nf}"])
+                else
+                    out.push(["","SUBL GR7,=#{nf}"])
+                end
             else
                 raise "Bad operation: #{op}"
             end
         end
-        out.push(["","RET"])
+        if out[-1][1] != "END" then
+            finish(out,current_module)
+        end
+
         out
+    end
+    def finish(out,current)
+        if out[-1][1] != "RET" then
+            out.push(["","RET"])
+        end
+        for v in variables
+            out.push([v,"DS 1"])
+        end
+        if current == "PROG" then
+            out.push(["CSTACK","DS 256"])
+        end
+        out.push(["","END"])
     end
     def variables
         @vars.keys
@@ -416,7 +612,7 @@ print "***Parse tree***\n"
 #print pt.to_s+"\n"
 pt.pretty
 
-qout = []
+qout = [Quadruple.new("start",nil,nil,"PROG")]
 gen = QuadrupleGenerator.new(qout)
 gen.generate(pt)
 print "***Quadruples***\n"
@@ -435,11 +631,13 @@ else
 end
 print "***Code Generation***\n"
 cgen = CodeGenerator.new(qopt)
-print "PROG\tSTART\n"
+#p cgen.generate
 for c in cgen.generate
     print c.join("\t"),"\n"
 end
-for v in cgen.variables
-    print v,"\tDS 1\n"
+open("library.cas") do |f|
+    while l=f.gets
+        print l
+    end
 end
-print "\tEND\n"
+

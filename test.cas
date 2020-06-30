@@ -1,26 +1,321 @@
+***PROGRAM***
+start:	
+ 	a = &f 1  ;
+ 	end
+ f:	func x :
+ 	local y z ;
+ 	y = 1 ;
+ 	z = 2 ;
+ 	if x == 0 : ffin ;
+ 	return x * &f x - 1 ;
+ ffin:	return 1 ;
+
+***Parse tree***
+(Program
+    (Statement
+        (Label START)
+    )
+    (Statement
+        (Variable A)
+        (= =)
+        (Expression
+            (Function
+                (FuncName F)
+                (Expression
+                    (Constant 1)
+                )
+            )
+        )
+    )
+    (Statement
+        (End End)
+    )
+    (Statement
+        (FuncName F)
+        (Variable X)
+    )
+    (Statement
+        (Local
+            (Variable Y)
+            (Variable Z)
+        )
+    )
+    (Statement
+        (Variable Y)
+        (= =)
+        (Expression
+            (Constant 1)
+        )
+    )
+    (Statement
+        (Variable Z)
+        (= =)
+        (Expression
+            (Constant 2)
+        )
+    )
+    (Statement
+        (If If)
+        (Expression
+            (Expression
+                (Variable X)
+            )
+            (== ==)
+            (Expression
+                (Constant 0)
+            )
+        )
+        (Label ffin)
+    )
+    (Statement
+        (Return Return)
+        (Expression
+            (Expression
+                (Variable X)
+            )
+            (* *)
+            (Expression
+                (Function
+                    (FuncName F)
+                    (Expression
+                        (Expression
+                            (Variable X)
+                        )
+                        (- -)
+                        (Expression
+                            (Constant 1)
+                        )
+                    )
+                )
+            )
+        )
+    )
+    (Statement
+        (Label FFIN)
+    )
+    (Statement
+        (Return Return)
+        (Expression
+            (Constant 1)
+        )
+    )
+)
+***Quadruples***
+(start,,,PROG)
+(label,,,START)
+(=,1,,T2)
+(arg,T2,,)
+(call,F,,T1)
+(=,T1,,A)
+(end,,,END)
+(function,,,F)
+(frame,2,,)
+(=,1,,T3)
+(=,T3,,@1)
+(=,2,,T4)
+(=,T4,,@0)
+(=,@2,,T6)
+(=,0,,T7)
+(==,T6,T7,T5)
+(cjump,T5,,ffin)
+(=,@2,,T9)
+(=,@2,,T12)
+(=,1,,T13)
+(-,T12,T13,T11)
+(arg,T11,,)
+(call,F,,T10)
+(*,T9,T10,T8)
+(=,T8,,@3)
+(frame,-2,,)
+(return,,,)
+(label,,,FFIN)
+(=,1,,T14)
+(=,T14,,@3)
+(frame,-2,,)
+(return,,,)
+***Optimized***
+(start,,,PROG)
+(label,,,START)
+(arg,1,,)
+(call,F,,A)
+(end,,,END)
+(function,,,F)
+(frame,2,,)
+(=,1,,@1)
+(=,2,,@0)
+(==,@2,0,T5)
+(cjump,T5,,ffin)
+(-,@2,1,T11)
+(arg,T11,,)
+(call,F,,T10)
+(*,@2,T10,@3)
+(frame,-2,,)
+(return,,,)
+(label,,,FFIN)
+(=,1,,@3)
+(frame,-2,,)
+(return,,,)
+***Code Generation***
 PROG	START
+	LAD GR7,256
+	LAD GR7,CSTACK,GR7
 START	NOP
-	LAD GR0,0
+	SUBL GR7,=2
+	LD GR0,=1
+	ST GR0,0,GR7
+	CALL F
+	LD GR0,1,GR7
 	ST GR0,A
-	LAD GR0,0
-	ST GR0,I
-LOOP	NOP
-	LD GR0,A
-	ADDA GR0,I
-	ST GR0,A
-	LD GR0,I
-	ADDA GR0,=1
-	ST GR0,I
-	LAD GR1,1
-	LD GR0,I
-	CPA GR0,=10
-	JMI L0
-	LAD GR1,0
-L0	ST GR1,T9
-	LD GR0,T9
-	JNZ LOOP
+	ADDL GR7,=2
 	RET
 A	DS 1
-I	DS 1
-T9	DS 1
+CSTACK	DS 256
 	END
+F	START
+	SUBL GR7,=2
+	LAD GR0,1
+	ST GR0,1,GR7
+	LAD GR0,2
+	ST GR0,0,GR7
+	LAD GR1,1
+	LD GR0,2,GR7
+	CPA GR0,=0
+	JZE L0
+	LAD GR1,0
+L0	ST GR1,T5
+	LD GR0,T5
+	JNZ FFIN
+	LD GR0,2,GR7
+	SUBA GR0,=1
+	ST GR0,T11
+	SUBL GR7,=2
+	LD GR0,T11
+	ST GR0,0,GR7
+	CALL F
+	LD GR0,1,GR7
+	ST GR0,T10
+	ADDL GR7,=2
+	LD GR1,2,GR7
+	LD GR2,T10
+	CALL FMULT
+	ST GR0,3,GR7
+	ADDL GR7,=2
+	RET
+FFIN	NOP
+	LAD GR0,1
+	ST GR0,3,GR7
+	ADDL GR7,=2
+	RET
+T5	DS 1
+T11	DS 1
+T10	DS 1
+	END
+; GR1: 入力文字領域先頭アドレス
+; GR2: 文字長
+; GR0: 出力
+; '0'-'9'以外の文字が来たらそこで終了する
+ATOI	START
+	PUSH 0,GR3
+	LAD GR0,0
+LOOP1	LD GR3,0,GR1
+	CPL GR3,ZERO
+	JMI ATOIFIN
+	CPL GR3,NINE
+	JPL ATOIFIN
+	SUBL GR3,ZERO
+	CALL MUL10	; GR0 *= 10
+	ADDA GR0,GR3	; GR0 += digit
+	ADDL GR1,=1	; GR1++
+	SUBL GR2,=1
+	JNZ LOOP1
+ATOIFIN	POP GR3
+	RET
+ZERO	DC '0'
+NINE	DC '9'	
+	END
+; GR0 *= 10
+MUL10	START
+	PUSH 0,GR4
+	LD GR4,GR0
+	SLA GR0,3
+	SLA GR4,1
+	ADDA GR0,GR4
+	POP GR4
+	RET
+	END
+;
+;	GR0: 入力
+;	GR1: 出力領域先頭
+;	GR2: 出力長さアドレス
+ITOA	START
+	RPUSH
+	LD GR5,0
+	LD GR6,GR1
+	LD GR7,GR2
+	LD GR1,GR0
+LOOP	LAD GR2,10
+	CALL FDIV
+	LD GR1,GR0
+	LD GR0,DIGIT,GR3
+	ST GR0,0,GR6
+	ADDL GR6,=1
+	ADDL GR5,=1
+	CPA GR1,0
+	JNZ LOOP
+	ST GR5,0,GR7
+	RPOP
+	RET
+DIGIT	DC '0123456789'
+	END
+;
+;	GR0 <- GR1*GR2
+;	
+FMULT   START
+        LAD GR0,0		; GR0←0
+        LAD GR3,16		; GR3←16
+LOOP    LD GR4,GR2		; G4←G2
+        AND GR4,=1		; G4←G4 and 1
+        JZE SKIP1		; if not zero then
+        ADDA GR0,GR1		;   G0←G0+G1
+SKIP1   SLA GR1,1		; G1←G1*2
+        SRA GR2,1		; G2←G2/2
+        SUBL GR3,=1		; G3←G3-1
+        JNZ LOOP		; if not zero goto LOOP
+        RET			; return
+        END
+;
+; GR0 <- GR1/GR2
+; GR3 <- GR1%GR2
+;
+FDIV	START
+	CPA GR1,GR2
+	JPL SKIP1
+	JZE SKIP2
+	; GR1 < GR2
+	LAD GR0,0
+	LD GR3,GR1
+	RET
+SKIP2	LD GR0,1	; GR1 == GR2
+	LAD GR3,0
+	RET
+; Shift GR2 LEFT until GR2>GR1
+; GR4: shift counter
+SKIP1	LAD GR4,1
+LOOP1	CPL GR1,GR2
+	JMI SKIP5
+	SLA GR2,1
+	SLA GR4,1
+	JUMP LOOP1
+SKIP5	LAD GR0,0
+LOOP2	CPL GR4,0
+	JNZ SKIP4
+	LD GR3,GR1
+	RET
+SKIP4	CPA GR1,GR2
+	JMI SKIP3
+	SUBA GR1,GR2
+	OR GR0,GR4
+SKIP3	SRA GR2,1
+	SRA GR4,1
+	JUMP LOOP2
+	END	
