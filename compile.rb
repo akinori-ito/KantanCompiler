@@ -19,7 +19,7 @@
             @prog.shift
             t = ParseTreeNode.new("Statement",[],nil)
             e = parseExpression
-            if @prog[0] != ":" then
+            if @prog[0] != "goto" then
                 raise "Syntax error: "+@prog[0..3].join(" ")
             end
             @prog.shift
@@ -112,9 +112,16 @@
         stack = []
         begin
             case @prog[0]
+            when "goto"
+                return stack.pop
             when "("
                 @prog.shift
                 stack.push(parseExpression)
+            when "Not"
+                @prog.shift
+                e = parseExpression
+                t = ParseTreeNode.new("Expression",[ParseTreeNode.new("Not",nil,"Not"),e],nil)
+                stack.push(t)
             when /^[0-9]+$/
                 v = ParseTreeNode.new("Constant",nil,@prog.shift)
                 stack.push(ParseTreeNode.new("Expression",[v],nil))
@@ -333,6 +340,10 @@ class QuadrupleGenerator
             @stream.push Quadruple.new("call",fn.child[0].content,nil,tmpvar)
         elsif e.child[0].type == "(" and e.child[2].type == ")" then
             expression(e.child[1],tmpvar)
+        elsif e.child[0].type == "Not" then
+            t1 = tmpname
+            expression(e.child[1],t1)
+            @stream.push Quadruple.new("not",t1,nil,tmpvar)
         elsif operators[e.child[1].type] then
             t1 = tmpname
             t2 = tmpname
@@ -524,6 +535,13 @@ class CodeGenerator
                 out.push(["",register_load("GR2",e2)])
                 out.push(["","CALL FDIV"])
                 out.push(["","ST GR3,#{dest}"])
+            when "not"
+                lab = newlabel
+                out.push(["",register_load("GR0",e1)])
+                out.push(["","JZE #{lab}"])
+                out.push(["","LAD GR0,#FFFF"])
+                out.push([lab,"ADDA GR0,=1"])
+                out.push(["","ST GR0,#{dest}"])
             when "label"
                 out.push([dest,"NOP"])
             when "function"

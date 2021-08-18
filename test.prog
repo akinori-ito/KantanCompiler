@@ -5,6 +5,6 @@ f:	func x :
 	local y z ;
 	y = 1 ;
 	z = 2 ;
-	if x == 0 : ffin ;
+	if Not 0 < x goto ffin ;
 	return x * &f x - 1 ;
 ffin:	return 1 ;
